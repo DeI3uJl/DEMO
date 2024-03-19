@@ -1,0 +1,22 @@
+version: '3'
+services:
+ mediawiki:
+  image: mediawiki
+  restart: always
+  ports:
+   - 8080:80
+  volumes:
+   - images:/var/www/html/images
+ database:
+  image: mariadb
+  restart: always
+  environment:
+   MYSQL_DATABASE: mediawiki
+   MYSQL_USER: wiki
+   MYSQL_PASSWORD: P@ssw0rd
+   MYSQL_ROOT_PASSWORD: P@ssw0rd
+  volumes:
+   - db_volume:/var/lib/mysql
+volumes:
+ images:
+ db_volume:
