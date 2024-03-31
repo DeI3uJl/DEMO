@@ -1,0 +1,72 @@
+Далее устанавливаем необходимые пакеты для web-менеджмента:
+apt install apache2 php php-cgi libapache2-mod-php php-mbstring php-common php-pear
+apt install slapd ldap-utils
+вылезет менюшка. Придумываем пароль для админа LDAP, в моём случае будет P@ssw0rd
+Проверяем настройку командой slapcat   (HQ-SRV)
+После этого устанавливаем Диспетчер учетных записей LDAP 
+apt install ldap-account-manager
+
+После того как установили пакет, включаем PHP расширение PHP-CGI командой 
+a2enconf php*-cgi и после этого перезагружаем службу сервера Apache и делаем так, чтобы она загружалась вместе с системой:
+systemctl restart apache2.service
+systemctl enable apache2.service
+Теперь мы можем зайти в веб-интерфейс LAM по адресу «http://<ip_адрес>/lam». Сразу начнём конфигурацию, заходим во вкладку LAM configuration
+Затем заходим в Edit server profiles
+Вводим пароль, по умолчанию это lam, и нажимаем Ok (рис. 38)
+Меняем часовой пояс на московский
+Листаем вниз и находим Tool settings. В строчке Tree suffix меняем на dc=hq,dc=work
+Под Tool settings располагается Security settings. Меняем строчку List of valid users на cn=admin,dc=hq,dc=work
+Листаем ниже и находим Profile password. Задаем пароль по умолчанию для веб-профиля admin, в моём случае это будет P@ssw0rd
+Сохраняем настройки кнопкой Save 
+ 	
+Теперь обратно в настройки и вводим пароль P@ssw0rd так как пароль поменялся и у lam
+Заходим во вкладку Account types
+Меняем в Users и Group строчки с LDAP suffix 
+Сохраняем настройки кнопкой Save.
+Теперь входим в основной веб-интерфейс LAM, пароль также P@ssw0rd
+Попросит создать подразделения, нажимаем Create
+	
+Вкладка Tools -> OU editor
+Видим New organizational unit, нажимаем на Parent DN и выбираем People > hq > work
+В поле Name пишем BR-SRV  и нажимаем Ok.
+Вкладка Tools -> Tree view, затем вкладка Accounts -> Groups
+Нам нужно создать новую группу. Нажимаем на кнопку New group 
+В строчку Group name пишем grp-BR-SRV
+Далее вкладка Accounts -> Users. Нам нужно создать пользователей для BR-SRV, значит создаём Branch_admin и Network_admin. Для этого нажимаем на кнопку New user
+Появляется менюшка создания пользователя. Во вкладке Personal в строку Last name вписываем имя пользователя  Во вкладке Unix исправляем строчку User name. Затем задаём пароль пользователю, нажимаем на кнопку Set password, пишем пароль и нажимаем Ok
+Сохраняем кнопкой Save. Проделываем данные шаги для обоих пользователей.
+Настройка сервера OpenLDAP на этом закончена. 
+
+a.	Введите машины BR-SRV и CLI в данный домен
+Теперь перейдём к настройке клиента (в данном случае BR-SRV). Также проверяем имя хоста и FQDN 
+Устанавливаем нужные пакеты для клиента OpenLDAP 
+apt install libnss-ldap libpam-ldap ldap-utils nscd. 
+При установке сразу вылезет менюшка настройки libnss-ldap, вписываем ldap://<ip_адрес>  Возможно нужно писать порт ldap://192.168.200.3:389 
+Далее вводим dc=hq,dc=work
+Выбираем 3 версию LDAP
+Пишем аккаунт админа cn=admin,dc=hq,dc=work
+Вводим пароль админа LDAP, в моём случае P@ssw0rd
+Будет жаловаться на ненастроенный nsswitch.conf, нажимаем Ok
+еперь настраиваем libpam-ldap. 
+Allow LDAP admin account to behave like local root -> Yes 
+Does the LDAP database require login -> No
+Вписываем cn=admin,dc=hq,dc=work
+Вписываем пароль администратора, в моём случае P@ssw0rd
+Теперь редактируем файлы, в nano /etc/nsswitch.conf надо изменить строчки
+passwd: compat systemd ldap
+group:	compat systemd ldap
+shadow: compat
+Конфигурация /etc/nsswitch.conf
+Теперь в nano /etc/pam.d/common-password из строчки
+Password [success=1 user_unknown=ignore default=die] pam_ldap.so use_authtok try_first_pass удаляем use_authtok
+Конфигурация /etc/pam.d/common-password
+В nano /etc/pam.d/common-session добавляем в конец файла 
+session optional pam_mkhomedir.so skel=/etc/skel umask=077 
+Конфигурация /etc/pam.d/common-session
+Перезагружаем и ставим на запуск при загрузке службу nscd:
+systemctl restart nscd.service
+systemctl enable nscd.service
+b.	Организуйте отслеживание подключения к домену
+Проверить подключение к домену можно командой 
+ldapsearch -x -H ldap://<ip_адрес> -b "dc=hq,dc=work" 
+После этого удаляем созданных в 1 модуле пользователей командой deluser <имя_пользователя> и удаляем их домашние папки rm –rf /home/<имя_пользователя>, так как LDAP создаст их за нас. Перезагружаем устройство и входим под любым пользователей
